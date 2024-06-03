@@ -1,0 +1,39 @@
+
+.my-color {
+	color: red;
+}
+
+.my-font {
+	font-family: 'Work Sans';
+}
+
+.my-root-class {
+	background: white;
+}
+
+.my-root-class body {
+	background: url(./assets/login-bg.svg) 0% 0% / cover no-repeat rgb(82, 90, 102);
+}
+
+
+#keycloakify-logo {
+	width: 300px;
+}
+
+#keycloakify-logo-wrapper {
+	display: flex;
+	width: 100%;
+	justify-content: center;
+}
+
+@media screen and (max-width: 568px) {
+	#keycloakify-logo {
+		width: 250px;
+	}
+}
+
+@media screen and (max-width: 840px) {
+	#keycloakify-logo {
+		width: 250px;
+	}
+}
