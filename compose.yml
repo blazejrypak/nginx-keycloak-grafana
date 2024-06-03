@@ -1,0 +1,110 @@
+x-logging: &logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:${POSTGRES_VERSION}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "keycloak"]
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./postgres_keycloak_data:/var/lib/postgresql/data
+    logging: *logging
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:${KC_VERSION}
+    command: ["start", "--proxy=edge", "--proxy-headers=xforwarded", "--hostname-strict=false", "--hostname-strict-https=false", "--import-realm"]
+    restart: unless-stopped
+    environment:
+      KC_DB: postgres
+      KC_DB_USERNAME: ${DB_USER}
+      KC_DB_PASSWORD: ${DB_PASSWORD}
+      KC_DB_URL: "jdbc:postgresql://postgres:5432/keycloak"
+      KC_METRICS_ENABLED: true
+      KC_LOG_LEVEL: ${KC_LOG_LEVEL}
+      KC_REALM_NAME: ${KC_REALM_NAME}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      GF_URL: ${GF_KC_URL}
+      GF_ADMIN_USERNAME: ${GF_ADMIN_USERNAME}
+      GF_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD}
+      PROXY_ADDRESS_FORWARDING: true
+    expose:
+      - ${KC_PORT}
+    volumes:
+      - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+    logging: *logging
+
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_VERSION}
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.wal-compression'
+      - '--web.enable-lifecycle'
+      - --web.route-prefix=/
+      - --web.external-url=${BASE_HOSTNAME}/prometheus
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--tries=1", "--spider", "${BASE_HOSTNAME}:9090/-/healthy"]
+    expose:
+      - 9090
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    logging: *logging
+
+  grafana:
+    image: grafana/grafana-oss:${GF_VERSION}
+    restart: unless-stopped
+    expose:
+      - ${GF_SERVER_HTTP_PORT}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "${BASE_HOSTNAME}:${GF_SERVER_HTTP_PORT}/api/health"]
+    environment:
+      GF_SERVER_HTTP_PORT: ${GF_SERVER_HTTP_PORT}
+      GF_LOG_LEVEL: ${GF_LOG_LEVEL}
+      GF_AUTH_BASIC_ENABLED: true
+      GF_AUTH_DISABLE_LOGIN_FORM: true
+      GF_AUTH_GENERIC_OAUTH_TLS_SKIP_VERIFY_INSECURE: true
+      GF_AUTH_GENERIC_OAUTH_ENABLED: true
+      GF_AUTH_GENERIC_OAUTH_NAME: Keycloak
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: true
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: "grafana"
+      GF_AUTH_GENERIC_OAUTH_EMAIL_ATTRIBUTE_NAME: "email:primary"
+      GF_AUTH_GENERIC_OAUTH_SCOPES: "openid profile email"
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: ${KC_HOSTNAME}/realms/${KC_REALM_NAME}/protocol/openid-connect/auth
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: http://keycloak:${KC_PORT}/realms/${KC_REALM_NAME}/protocol/openid-connect/token
+      GF_AUTH_GENERIC_OAUTH_API_URL: ${KC_HOSTNAME}/realms/${KC_REALM_NAME}/protocol/openid-connect/userinfo
+      GF_SERVER_ROOT_URL: ${GF_HOSTNAME}
+    volumes:
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    logging: *logging
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - keycloak
+      - prometheus
+      - grafana
+
+networks:
+  default:
+    name: keycloak-network
+    external: true

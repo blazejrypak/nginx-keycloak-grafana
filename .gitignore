@@ -1,0 +1,5 @@
+.gitconfig
+db
+.env
+postgres_keycloak_data
+.DS_Store
