@@ -19,7 +19,10 @@ services:
     logging: *logging
 
   keycloak:
-    image: quay.io/keycloak/keycloak:${KC_VERSION}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # image: quay.io/keycloak/keycloak:${KC_VERSION}
     command: ["start", "--proxy=edge", "--proxy-headers=xforwarded", "--hostname-strict=false", "--hostname-strict-https=false", "--import-realm"]
     restart: unless-stopped
     environment:
